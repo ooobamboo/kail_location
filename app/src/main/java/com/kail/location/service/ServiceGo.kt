@@ -390,11 +390,18 @@ class ServiceGo : Service() {
             Log.i("ServiceGo", "ServiceGo: onStartCommand received lat=$mCurLat, lng=$mCurLng, runMode=$mRunMode")
 
             // Always ensure providers so third-party SDKs (e.g., Baidu) can receive GPS/Network updates
-            ensureNorootProviders()
+            if (mRunMode != "root") {
+                ensureNorootProviders()
+            }
             if (mRunMode == "root") {
-                portalInitIfNeeded()
-                portalStartIfNeeded()
-                portalUpdateOnce()
+                // Move portal init/update to background thread to avoid ANR
+                if (this::mLocHandler.isInitialized) {
+                    mLocHandler.post {
+                        portalInitIfNeeded()
+                        portalStartIfNeeded()
+                        portalUpdateOnce()
+                    }
+                }
             }
 
             startLocationLoop()
