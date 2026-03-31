@@ -24,7 +24,8 @@ import com.baidu.mapapi.search.geocode.GeoCoder
 import com.baidu.mapapi.search.geocode.OnGetGeoCoderResultListener
 import com.baidu.mapapi.search.geocode.ReverseGeoCodeOption
 import androidx.core.content.ContextCompat
-import com.kail.location.service.ServiceGo
+import com.kail.location.service.ServiceGoRoot
+import com.kail.location.service.ServiceGoNoroot
 
 import com.baidu.mapapi.search.sug.SuggestionSearch
 import com.baidu.mapapi.search.sug.SuggestionSearchOption
@@ -272,17 +273,25 @@ class RouteSimulationViewModel(application: Application) : AndroidViewModel(appl
             }
         }
 
-        val intent = Intent(app, ServiceGo::class.java)
-        intent.putExtra(ServiceGo.EXTRA_ROUTE_POINTS, points)
-        intent.putExtra(ServiceGo.EXTRA_ROUTE_LOOP, settings.value.isLoop)
-        intent.putExtra(ServiceGo.EXTRA_JOYSTICK_ENABLED, false)
-        intent.putExtra(ServiceGo.EXTRA_ROUTE_SPEED, settings.value.speed)
-        intent.putExtra(ServiceGo.EXTRA_COORD_TYPE, ServiceGo.COORD_BD09)
-        intent.putExtra(ServiceGo.EXTRA_RUN_MODE, currentRunMode)
-        intent.putExtra(ServiceGo.EXTRA_SPEED_FLUCTUATION, settings.value.speedFluctuation)
-        intent.putExtra(ServiceGo.EXTRA_STEP_ENABLED, settings.value.stepFreqSimulation)
-        intent.putExtra(ServiceGo.EXTRA_STEP_FREQ, settings.value.stepCadenceSpm)
-        intent.putExtra("EXTRA_IS_ROUTE_SIMULATION", true)
+        val serviceClass = if (currentRunMode == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+        val intent = Intent(app, serviceClass)
+        val extraRoutePoints = if (currentRunMode == "root") ServiceGoRoot.EXTRA_ROUTE_POINTS else ServiceGoNoroot.EXTRA_ROUTE_POINTS
+        val extraRouteLoop = if (currentRunMode == "root") ServiceGoRoot.EXTRA_ROUTE_LOOP else ServiceGoNoroot.EXTRA_ROUTE_LOOP
+        val extraJoystickEnabled = if (currentRunMode == "root") ServiceGoRoot.EXTRA_JOYSTICK_ENABLED else ServiceGoNoroot.EXTRA_JOYSTICK_ENABLED
+        val extraRouteSpeed = if (currentRunMode == "root") ServiceGoRoot.EXTRA_ROUTE_SPEED else ServiceGoNoroot.EXTRA_ROUTE_SPEED
+        val extraCoordType = if (currentRunMode == "root") ServiceGoRoot.EXTRA_COORD_TYPE else ServiceGoNoroot.EXTRA_COORD_TYPE
+        val extraSpeedFluctuation = if (currentRunMode == "root") ServiceGoRoot.EXTRA_SPEED_FLUCTUATION else ServiceGoNoroot.EXTRA_SPEED_FLUCTUATION
+        intent.putExtra(extraRoutePoints, points)
+        intent.putExtra(extraRouteLoop, settings.value.isLoop)
+        intent.putExtra(extraJoystickEnabled, false)
+        intent.putExtra(extraRouteSpeed, settings.value.speed)
+        intent.putExtra(extraCoordType, "BD09")
+        intent.putExtra(extraSpeedFluctuation, settings.value.speedFluctuation)
+        if (currentRunMode == "root") {
+            intent.putExtra(ServiceGoRoot.EXTRA_STEP_ENABLED, settings.value.stepFreqSimulation)
+            intent.putExtra(ServiceGoRoot.EXTRA_STEP_FREQ, settings.value.stepCadenceSpm)
+            intent.putExtra("EXTRA_IS_ROUTE_SIMULATION", true)
+        }
         ContextCompat.startForegroundService(app, intent)
         _isSimulating.value = true
         _isPaused.value = false
@@ -291,23 +300,28 @@ class RouteSimulationViewModel(application: Application) : AndroidViewModel(appl
 
     fun stopSimulation() {
         val app = getApplication<Application>()
-        app.stopService(Intent(app, ServiceGo::class.java))
+        val serviceClass = if (_runMode.value == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+        app.stopService(Intent(app, serviceClass))
         _isSimulating.value = false
         _isPaused.value = false
     }
 
     fun pauseSimulation() {
         val app = getApplication<Application>()
-        val intent = Intent(app, ServiceGo::class.java)
-        intent.putExtra(ServiceGo.EXTRA_CONTROL_ACTION, ServiceGo.CONTROL_PAUSE)
+        val serviceClass = if (_runMode.value == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+        val controlAction = if (_runMode.value == "root") ServiceGoRoot.CONTROL_PAUSE else ServiceGoNoroot.CONTROL_PAUSE
+        val intent = Intent(app, serviceClass)
+        intent.putExtra("EXTRA_CONTROL_ACTION", controlAction)
         app.startService(intent)
         _isPaused.value = true
     }
 
     fun resumeSimulation() {
         val app = getApplication<Application>()
-        val intent = Intent(app, ServiceGo::class.java)
-        intent.putExtra(ServiceGo.EXTRA_CONTROL_ACTION, ServiceGo.CONTROL_RESUME)
+        val serviceClass = if (_runMode.value == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+        val controlAction = if (_runMode.value == "root") ServiceGoRoot.CONTROL_RESUME else ServiceGoNoroot.CONTROL_RESUME
+        val intent = Intent(app, serviceClass)
+        intent.putExtra("EXTRA_CONTROL_ACTION", controlAction)
         app.startService(intent)
         _isPaused.value = false
     }
@@ -343,9 +357,12 @@ class RouteSimulationViewModel(application: Application) : AndroidViewModel(appl
             .edit().putFloat("route_sim_speed", speed).apply()
         if (_isSimulating.value) {
             val app = getApplication<Application>()
-            val intent = Intent(app, ServiceGo::class.java)
-            intent.putExtra(ServiceGo.EXTRA_CONTROL_ACTION, ServiceGo.CONTROL_SET_SPEED)
-            intent.putExtra(ServiceGo.EXTRA_ROUTE_SPEED, speed)
+            val serviceClass = if (_runMode.value == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+            val controlAction = if (_runMode.value == "root") ServiceGoRoot.CONTROL_SET_SPEED else ServiceGoNoroot.CONTROL_SET_SPEED
+            val routeSpeed = if (_runMode.value == "root") ServiceGoRoot.EXTRA_ROUTE_SPEED else ServiceGoNoroot.EXTRA_ROUTE_SPEED
+            val intent = Intent(app, serviceClass)
+            intent.putExtra("EXTRA_CONTROL_ACTION", controlAction)
+            intent.putExtra(routeSpeed, speed)
             app.startService(intent)
         }
     }
@@ -362,9 +379,12 @@ class RouteSimulationViewModel(application: Application) : AndroidViewModel(appl
             .edit().putBoolean("route_sim_speed_fluctuation", enabled).apply()
         if (_isSimulating.value) {
             val app = getApplication<Application>()
-            val intent = Intent(app, ServiceGo::class.java)
-            intent.putExtra(ServiceGo.EXTRA_CONTROL_ACTION, ServiceGo.CONTROL_SET_SPEED_FLUCTUATION)
-            intent.putExtra(ServiceGo.EXTRA_SPEED_FLUCTUATION, enabled)
+            val serviceClass = if (_runMode.value == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+            val controlAction = if (_runMode.value == "root") ServiceGoRoot.CONTROL_SET_SPEED_FLUCTUATION else ServiceGoNoroot.CONTROL_SET_SPEED_FLUCTUATION
+            val speedFluctuation = if (_runMode.value == "root") ServiceGoRoot.EXTRA_SPEED_FLUCTUATION else ServiceGoNoroot.EXTRA_SPEED_FLUCTUATION
+            val intent = Intent(app, serviceClass)
+            intent.putExtra("EXTRA_CONTROL_ACTION", controlAction)
+            intent.putExtra(speedFluctuation, enabled)
             app.startService(intent)
         }
     }
@@ -373,12 +393,12 @@ class RouteSimulationViewModel(application: Application) : AndroidViewModel(appl
         _settings.value = _settings.value.copy(stepFreqSimulation = enabled)
         PreferenceManager.getDefaultSharedPreferences(getApplication())
             .edit().putBoolean("route_sim_step_enabled", enabled).apply()
-        if (_isSimulating.value) {
+        if (_isSimulating.value && _runMode.value == "root") {
             val app = getApplication<Application>()
-            val intent = Intent(app, ServiceGo::class.java)
-            intent.putExtra(ServiceGo.EXTRA_CONTROL_ACTION, ServiceGo.CONTROL_SET_STEP)
-            intent.putExtra(ServiceGo.EXTRA_STEP_ENABLED, enabled)
-            intent.putExtra(ServiceGo.EXTRA_STEP_FREQ, _settings.value.stepCadenceSpm)
+            val intent = Intent(app, ServiceGoRoot::class.java)
+            intent.putExtra("EXTRA_CONTROL_ACTION", ServiceGoRoot.CONTROL_SET_STEP)
+            intent.putExtra(ServiceGoRoot.EXTRA_STEP_ENABLED, enabled)
+            intent.putExtra(ServiceGoRoot.EXTRA_STEP_FREQ, _settings.value.stepCadenceSpm)
             app.startService(intent)
         }
     }
@@ -387,12 +407,12 @@ class RouteSimulationViewModel(application: Application) : AndroidViewModel(appl
         _settings.value = _settings.value.copy(stepCadenceSpm = spm)
         PreferenceManager.getDefaultSharedPreferences(getApplication())
             .edit().putFloat("route_sim_step_freq", spm).apply()
-        if (_isSimulating.value) {
+        if (_isSimulating.value && _runMode.value == "root") {
             val app = getApplication<Application>()
-            val intent = Intent(app, ServiceGo::class.java)
-            intent.putExtra(ServiceGo.EXTRA_CONTROL_ACTION, ServiceGo.CONTROL_SET_STEP)
-            intent.putExtra(ServiceGo.EXTRA_STEP_ENABLED, _settings.value.stepFreqSimulation)
-            intent.putExtra(ServiceGo.EXTRA_STEP_FREQ, spm)
+            val intent = Intent(app, ServiceGoRoot::class.java)
+            intent.putExtra("EXTRA_CONTROL_ACTION", ServiceGoRoot.CONTROL_SET_STEP)
+            intent.putExtra(ServiceGoRoot.EXTRA_STEP_ENABLED, _settings.value.stepFreqSimulation)
+            intent.putExtra(ServiceGoRoot.EXTRA_STEP_FREQ, spm)
             app.startService(intent)
         }
     }

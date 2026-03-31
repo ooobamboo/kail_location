@@ -34,17 +34,12 @@ import com.kail.location.utils.MapUtils
 import com.kail.location.geo.GeoMath
 import com.kail.location.geo.GeoPredict
 
-/**
- * 前台定位模拟服务。
- * 管理模拟位置提供者、摇杆悬浮窗以及后台线程执行。
- */
-class ServiceGo : Service() {
-    // 定位相关变量
+class ServiceGoRoot : Service() {
     private var mCurLat = DEFAULT_LAT
     private var mCurLng = DEFAULT_LNG
     private var mCurAlt = DEFAULT_ALT
     private var mCurBea = DEFAULT_BEA
-    private var mSpeed = 1.2        /* 默认的速度，单位 m/s */
+    private var mSpeed = 1.2
 
     private lateinit var mLocManager: LocationManager
     private lateinit var mLocHandlerThread: HandlerThread
@@ -52,14 +47,12 @@ class ServiceGo : Service() {
     private var isStop = false
 
     private var mActReceiver: NoteActionReceiver? = null
-    // Notification object
     private var mNotification: Notification? = null
 
-    // 摇杆相关
     private lateinit var mJoystickManager: JoystickWindowManager
     private lateinit var mJoystickViewModel: JoystickViewModel
 
-    private val mBinder = ServiceGoBinder()
+    private val mBinder = ServiceGoRootBinder()
     private var mRoutePoints: MutableList<Pair<Double, Double>> = mutableListOf()
     private var mRouteCumulativeDistances: MutableList<Double> = mutableListOf()
     private var mTotalDistance: Double = 0.0
@@ -67,7 +60,6 @@ class ServiceGo : Service() {
     private var mRouteLoop = false
     private var mSegmentProgressMeters = 0.0
 
-    private var mRunMode: String = "noroot"
     private var portalRandomKey: String? = null
     private var portalStarted: Boolean = false
     private var locationLoopStarted: Boolean = false
@@ -83,20 +75,18 @@ class ServiceGo : Service() {
         const val DEFAULT_BEA = 0.0f
 
         private const val HANDLER_MSG_ID = 0
-        private const val SERVICE_GO_HANDLER_NAME = "ServiceGoLocation"
+        private const val SERVICE_GO_HANDLER_NAME = "ServiceGoRootLocation"
 
-        // 通知栏消息
         private const val SERVICE_GO_NOTE_ID = 1
         const val SERVICE_GO_NOTE_ACTION_JOYSTICK_SHOW = "ShowJoyStick"
         const val SERVICE_GO_NOTE_ACTION_JOYSTICK_HIDE = "HideJoyStick"
-        private const val SERVICE_GO_NOTE_CHANNEL_ID = "SERVICE_GO_NOTE"
-        private const val SERVICE_GO_NOTE_CHANNEL_NAME = "SERVICE_GO_NOTE"
+        private const val SERVICE_GO_NOTE_CHANNEL_ID = "SERVICE_GO_ROOT_NOTE"
+        private const val SERVICE_GO_NOTE_CHANNEL_NAME = "SERVICE_GO_ROOT_NOTE"
         const val EXTRA_ROUTE_POINTS = "EXTRA_ROUTE_POINTS"
         const val EXTRA_ROUTE_LOOP = "EXTRA_ROUTE_LOOP"
         const val EXTRA_JOYSTICK_ENABLED = "EXTRA_JOYSTICK_ENABLED"
         const val EXTRA_ROUTE_SPEED = "EXTRA_ROUTE_SPEED"
         const val EXTRA_COORD_TYPE = "EXTRA_COORD_TYPE"
-        const val EXTRA_RUN_MODE = "EXTRA_RUN_MODE"
         const val EXTRA_CONTROL_ACTION = "EXTRA_CONTROL_ACTION"
         const val EXTRA_SPEED_FLUCTUATION = "EXTRA_SPEED_FLUCTUATION"
         const val EXTRA_SEEK_RATIO = "EXTRA_SEEK_RATIO"
@@ -119,9 +109,6 @@ class ServiceGo : Service() {
         private const val PORTAL_PROVIDER = "portal"
     }
 
-    /**
-     * 广播当前模拟状态（是否正在模拟、是否暂停）到应用内，供界面刷新。
-     */
     private fun broadcastStatus() {
         val intent = Intent(ACTION_STATUS_CHANGED)
         intent.putExtra(EXTRA_IS_SIMULATING, locationLoopStarted && !isStop)
@@ -130,57 +117,37 @@ class ServiceGo : Service() {
         sendBroadcast(intent)
     }
 
-    /**
-     * 绑定服务到 Activity。
-     *
-     * @param intent 绑定意图。
-     * @return 服务的 Binder 实例。
-     */
     override fun onBind(intent: Intent): IBinder {
         return mBinder
     }
 
-    /**
-     * 服务创建时的初始化流程：
-     * - 初始化并启动前台通知
-     * - 初始化 LocationManager
-     * - 初始化定位线程与 Handler
-     * - 初始化摇杆并根据权限显示/隐藏
-     * 最后广播初始状态供界面监听。
-     */
     override fun onCreate() {
         super.onCreate()
-        KailLog.i(this, "ServiceGo", "onCreate started")
+        KailLog.i(this, "ServiceGoRoot", "onCreate started")
         
-        // 1. Init Notification & Foreground Service
         try {
-            KailLog.i(this, "ServiceGo", "1. initNotification")
-            // Must call startForeground immediately
+            KailLog.i(this, "ServiceGoRoot", "1. initNotification")
             initNotification()
         } catch (e: Throwable) {
-            KailLog.e(this, "ServiceGo", "Error in initNotification: ${e.message}")
-            // Continue execution, don't stopSelf yet, maybe we can survive or at least log more
+            KailLog.e(this, "ServiceGoRoot", "Error in initNotification: ${e.message}")
         }
 
-        // 2. Init Location Manager & Providers
         try {
-            KailLog.i(this, "ServiceGo", "2. init LocationManager")
+            KailLog.i(this, "ServiceGoRoot", "2. init LocationManager")
             mLocManager = this.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         } catch (e: Throwable) {
-            KailLog.e(this, "ServiceGo", "Error in LocationManager init: ${e.message}")
+            KailLog.e(this, "ServiceGoRoot", "Error in LocationManager init: ${e.message}")
         }
 
-        // 3. Init Location Handler
         try {
-            KailLog.i(this, "ServiceGo", "3. initGoLocation")
+            KailLog.i(this, "ServiceGoRoot", "3. initGoLocation")
             initGoLocation()
         } catch (e: Throwable) {
-            KailLog.e(this, "ServiceGo", "Error in initGoLocation: ${e.message}")
+            KailLog.e(this, "ServiceGoRoot", "Error in initGoLocation: ${e.message}")
         }
             
-        // 4. Init JoyStick
         try {
-            KailLog.i(this, "ServiceGo", "4. initJoyStick")
+            KailLog.i(this, "ServiceGoRoot", "4. initJoyStick")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
                 GoUtils.DisplayToast(applicationContext, "请授予悬浮窗权限")
             }
@@ -195,25 +162,15 @@ class ServiceGo : Service() {
                 mJoystickManager.hide()
             }
         } catch (e: Throwable) {
-            KailLog.e(this, "ServiceGo", "Error initializing JoyStick: ${e.message}")
+            KailLog.e(this, "ServiceGoRoot", "Error initializing JoyStick: ${e.message}")
             GoUtils.DisplayToast(applicationContext, "悬浮窗初始化失败: ${e.message}")
         }
 
         broadcastStatus()
-        KailLog.i(this, "ServiceGo", "onCreate finished")
+        KailLog.i(this, "ServiceGoRoot", "onCreate finished")
     }
 
-    /**
-     * 服务启动回调。
-     * 处理位置、路线与摇杆设置相关的启动参数。
-     *
-     * @param intent 启动服务时传入的意图。
-     * @param flags 启动标志。
-     * @param startId 启动 ID。
-     * @return 返回服务的启动语义。
-     */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Handle control actions (pause/resume/stop) early
         if (intent != null) {
             val ctrl = intent.getStringExtra(EXTRA_CONTROL_ACTION)
             if (!ctrl.isNullOrBlank()) {
@@ -225,9 +182,9 @@ class ServiceGo : Service() {
                                 mJoystickManager.setRoutePauseState(true)
                             }
                             broadcastStatus()
-                            KailLog.log(this, "ServiceGo", "Paused simulation (isStop=true)", isHighFrequency = false)
+                            KailLog.log(this, "ServiceGoRoot", "Paused simulation (isStop=true)", isHighFrequency = false)
                         } catch (e: Exception) {
-                            KailLog.log(this, "ServiceGo", "Pause error: ${e.message}", isHighFrequency = false)
+                            KailLog.log(this, "ServiceGoRoot", "Pause error: ${e.message}", isHighFrequency = false)
                         }
                         return super.onStartCommand(intent, flags, startId)
                     }
@@ -238,19 +195,19 @@ class ServiceGo : Service() {
                                 mJoystickManager.setRoutePauseState(false)
                             }
                             broadcastStatus()
-                            KailLog.log(this, "ServiceGo", "Resumed simulation (isStop=false)", isHighFrequency = false)
+                            KailLog.log(this, "ServiceGoRoot", "Resumed simulation (isStop=false)", isHighFrequency = false)
                         } catch (e: Exception) {
-                            KailLog.log(this, "ServiceGo", "Resume error: ${e.message}", isHighFrequency = false)
+                            KailLog.log(this, "ServiceGoRoot", "Resume error: ${e.message}", isHighFrequency = false)
                         }
                         return super.onStartCommand(intent, flags, startId)
                     }
                     CONTROL_STOP -> {
                         try {
                             stopSelf()
-                            broadcastStatus() // Technically stopSelf calls onDestroy, but explicit broadcast helps
-                            KailLog.i(this, "ServiceGo", "stopSelf via control action")
+                            broadcastStatus()
+                            KailLog.i(this, "ServiceGoRoot", "stopSelf via control action")
                         } catch (e: Exception) {
-                            KailLog.e(this, "ServiceGo", "stop error: ${e.message}")
+                            KailLog.e(this, "ServiceGoRoot", "stop error: ${e.message}")
                         }
                         return super.onStartCommand(intent, flags, startId)
                     }
@@ -288,10 +245,10 @@ class ServiceGo : Service() {
                                 mCurLat = a.second + dLatDeg * f
                                 mCurBea = GeoMath.bearingDegrees(a.first, a.second, b.first, b.second)
                                 updateJoystickStatus()
-                                KailLog.i(this, "ServiceGo", "seek to ratio=$ratio index=$mRouteIndex progress=$mSegmentProgressMeters")
+                                KailLog.i(this, "ServiceGoRoot", "seek to ratio=$ratio index=$mRouteIndex progress=$mSegmentProgressMeters")
                             }
                         } catch (e: Exception) {
-                            KailLog.e(this, "ServiceGo", "seek error: ${e.message}")
+                            KailLog.e(this, "ServiceGoRoot", "seek error: ${e.message}")
                         }
                         return super.onStartCommand(intent, flags, startId)
                     }
@@ -299,22 +256,20 @@ class ServiceGo : Service() {
                         try {
                             val kmh = intent.getFloatExtra(EXTRA_ROUTE_SPEED, (mSpeed * 3.6).toFloat())
                             mSpeed = kmh.toDouble() / 3.6
-                            if (mRunMode == "root") {
-                                portalStartIfNeeded()
-                                portalSend("set_speed") { putFloat("speed", mSpeed.toFloat()) }
-                            }
-                            KailLog.i(this, "ServiceGo", "speed updated to km/h=$kmh m/s=$mSpeed")
+                            portalStartIfNeeded()
+                            portalSend("set_speed") { putFloat("speed", mSpeed.toFloat()) }
+                            KailLog.i(this, "ServiceGoRoot", "speed updated to km/h=$kmh m/s=$mSpeed")
                         } catch (e: Exception) {
-                            KailLog.e(this, "ServiceGo", "set_speed error: ${e.message}")
+                            KailLog.e(this, "ServiceGoRoot", "set_speed error: ${e.message}")
                         }
                         return super.onStartCommand(intent, flags, startId)
                     }
                     CONTROL_SET_SPEED_FLUCTUATION -> {
                         try {
                             speedFluctuation = intent.getBooleanExtra(EXTRA_SPEED_FLUCTUATION, speedFluctuation)
-                            KailLog.i(this, "ServiceGo", "speedFluctuation updated to $speedFluctuation")
+                            KailLog.i(this, "ServiceGoRoot", "speedFluctuation updated to $speedFluctuation")
                         } catch (e: Exception) {
-                            KailLog.e(this, "ServiceGo", "set_speed_fluctuation error: ${e.message}")
+                            KailLog.e(this, "ServiceGoRoot", "set_speed_fluctuation error: ${e.message}")
                         }
                         return super.onStartCommand(intent, flags, startId)
                     }
@@ -322,14 +277,12 @@ class ServiceGo : Service() {
                         try {
                             stepEnabledCache = intent.getBooleanExtra(EXTRA_STEP_ENABLED, stepEnabledCache)
                             stepFreqCache = intent.getFloatExtra(EXTRA_STEP_FREQ, stepFreqCache.toFloat()).toDouble()
-                             if (mRunMode == "root") {
-                                 portalStartIfNeeded()
-                                 portalSend("set_step_enabled") { putBoolean("enabled", stepEnabledCache) }
-                                 portalSend("set_step_cadence") { putFloat("cadence", stepFreqCache.toFloat()) }
-                             }
-                             KailLog.i(this, "ServiceGo", "step simulation updated: enabled=$stepEnabledCache, freq=$stepFreqCache")
+                            portalStartIfNeeded()
+                            portalSend("set_step_enabled") { putBoolean("enabled", stepEnabledCache) }
+                            portalSend("set_step_cadence") { putFloat("cadence", stepFreqCache.toFloat()) }
+                            KailLog.i(this, "ServiceGoRoot", "step simulation updated: enabled=$stepEnabledCache, freq=$stepFreqCache")
                         } catch (e: Exception) {
-                            KailLog.e(this, "ServiceGo", "set_step error: ${e.message}")
+                            KailLog.e(this, "ServiceGoRoot", "set_step error: ${e.message}")
                         }
                         return super.onStartCommand(intent, flags, startId)
                     }
@@ -340,8 +293,7 @@ class ServiceGo : Service() {
             isRouteSimulationCache = intent.getBooleanExtra("EXTRA_IS_ROUTE_SIMULATION", false)
             speedFluctuation = intent.getBooleanExtra(EXTRA_SPEED_FLUCTUATION, false)
         }
-        // Ensure startForeground is called to prevent crash (ForegroundServiceDidNotStartInTimeException)
-        // even if onCreate was skipped (service already running)
+
         if (mNotification != null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(SERVICE_GO_NOTE_ID, mNotification!!, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
@@ -349,16 +301,14 @@ class ServiceGo : Service() {
                 startForeground(SERVICE_GO_NOTE_ID, mNotification!!)
             }
         } else {
-            // If notification is missing, try to init it again
             try {
                 initNotification()
             } catch (e: Exception) {
-                KailLog.e(this, "ServiceGo", "Error in onStartCommand initNotification: ${e.message}")
+                KailLog.e(this, "ServiceGoRoot", "Error in onStartCommand initNotification: ${e.message}")
             }
         }
 
         if (intent != null) {
-            mRunMode = intent.getStringExtra(EXTRA_RUN_MODE) ?: "noroot"
             val coordType = intent.getStringExtra(EXTRA_COORD_TYPE) ?: COORD_BD09
             mCurLng = intent.getDoubleExtra(LocationPickerActivity.LNG_MSG_ID, DEFAULT_LNG)
             mCurLat = intent.getDoubleExtra(LocationPickerActivity.LAT_MSG_ID, DEFAULT_LAT)
@@ -406,20 +356,13 @@ class ServiceGo : Service() {
                 calculateRouteDistances()
             }
             
-            KailLog.i(this, "ServiceGo", "onStartCommand received lat=$mCurLat, lng=$mCurLng, runMode=$mRunMode")
+            KailLog.i(this, "ServiceGoRoot", "onStartCommand received lat=$mCurLat, lng=$mCurLng")
 
-            // Always ensure providers so third-party SDKs (e.g., Baidu) can receive GPS/Network updates
-            if (mRunMode != "root") {
-                ensureNorootProviders()
-            }
-            if (mRunMode == "root") {
-                // Move portal init/update to background thread to avoid ANR
-                if (this::mLocHandler.isInitialized) {
-                    mLocHandler.post {
-                        portalInitIfNeeded()
-                        portalStartIfNeeded()
-                        portalUpdateOnce()
-                    }
+            if (this::mLocHandler.isInitialized) {
+                mLocHandler.post {
+                    portalInitIfNeeded()
+                    portalStartIfNeeded()
+                    portalUpdateOnce()
                 }
             }
 
@@ -431,9 +374,9 @@ class ServiceGo : Service() {
                     if (joystickEnabled) {
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
                             if (mRoutePoints.isNotEmpty()) {
-                                mJoystickManager.showRouteControl(mSpeed * 3.6) // Show Route Control if route exists
+                                mJoystickManager.showRouteControl(mSpeed * 3.6)
                             } else {
-                                mJoystickManager.show() // Show Manual Joystick otherwise
+                                mJoystickManager.show()
                             }
                         } else {
                             GoUtils.DisplayToast(applicationContext, "请授予悬浮窗权限")
@@ -442,7 +385,7 @@ class ServiceGo : Service() {
                         mJoystickManager.hide()
                     }
                 } catch (e: Exception) {
-                    KailLog.e(this, "ServiceGo", "Error setting current position or showing joystick: ${e.message}")
+                    KailLog.e(this, "ServiceGoRoot", "Error setting current position or showing joystick: ${e.message}")
                 }
             }
         }
@@ -450,21 +393,16 @@ class ServiceGo : Service() {
         return super.onStartCommand(intent, flags, startId)
     }
 
-    /**
-     * 服务销毁回调。
-     * 清理资源、广播接收器并停止前台服务。
-     */
     override fun onDestroy() {
-        KailLog.i(this, "ServiceGo", "onDestroy started")
+        KailLog.i(this, "ServiceGoRoot", "onDestroy started")
         try {
-            // Stop route simulation native hook
             if (portalStarted) {
                 portalSend("set_route_simulation") {
                     putBoolean("active", false)
                     putFloat("spm", 120f)
                     putInt("mode", 0)
                 }
-                KailLog.i(this, "ServiceGo", ">>> Sent route simulation stop")
+                KailLog.i(this, "ServiceGoRoot", ">>> Sent route simulation stop")
             }
             
             val intent = Intent(ACTION_STATUS_CHANGED)
@@ -485,12 +423,7 @@ class ServiceGo : Service() {
                 mJoystickManager.destroy()
             }
 
-            if (mRunMode != "root") {
-                removeTestProviderNetwork()
-                removeTestProviderGPS()
-            } else {
-                portalStopSafe()
-            }
+            portalStopSafe()
 
             mActReceiver?.let { unregisterReceiver(it) }
             mActReceiver = null
@@ -502,17 +435,13 @@ class ServiceGo : Service() {
                 stopForeground(true)
             }
         } catch (e: Exception) {
-            KailLog.e(this, "ServiceGo", "Error in onDestroy: ${e.message}")
+            KailLog.e(this, "ServiceGoRoot", "Error in onDestroy: ${e.message}")
         }
 
         super.onDestroy()
-        KailLog.i(this, "ServiceGo", "onDestroy finished")
+        KailLog.i(this, "ServiceGoRoot", "onDestroy finished")
     }
 
-    /**
-     * 初始化前台服务通知。
-     * 同时注册通知栏操作的广播接收器。
-     */
     private fun initNotification() {
         if (mActReceiver == null) {
             mActReceiver = NoteActionReceiver()
@@ -536,35 +465,20 @@ class ServiceGo : Service() {
         
         notificationManager?.createNotificationChannel(mChannel)
         
-        //准备intent
         val clickIntent = Intent(this, LocationPickerActivity::class.java)
         val clickPI = PendingIntent.getActivity(this, 1, clickIntent, PendingIntent.FLAG_IMMUTABLE)
         val showIntent = Intent(SERVICE_GO_NOTE_ACTION_JOYSTICK_SHOW)
-        val showPendingPI =
-            PendingIntent.getBroadcast(this, 0, showIntent, PendingIntent.FLAG_IMMUTABLE)
+        val showPendingPI = PendingIntent.getBroadcast(this, 0, showIntent, PendingIntent.FLAG_IMMUTABLE)
         val hideIntent = Intent(SERVICE_GO_NOTE_ACTION_JOYSTICK_HIDE)
-        val hidePendingPI =
-            PendingIntent.getBroadcast(this, 0, hideIntent, PendingIntent.FLAG_IMMUTABLE)
+        val hidePendingPI = PendingIntent.getBroadcast(this, 0, hideIntent, PendingIntent.FLAG_IMMUTABLE)
 
         val notification = NotificationCompat.Builder(this, SERVICE_GO_NOTE_CHANNEL_ID)
             .setChannelId(SERVICE_GO_NOTE_CHANNEL_ID)
             .setContentTitle(resources.getString(R.string.app_name))
             .setContentText(resources.getString(R.string.app_service_tips))
             .setContentIntent(clickPI)
-            .addAction(
-                NotificationCompat.Action(
-                    null,
-                    resources.getString(R.string.note_show),
-                    showPendingPI
-                )
-            )
-            .addAction(
-                NotificationCompat.Action(
-                    null,
-                    resources.getString(R.string.note_hide),
-                    hidePendingPI
-                )
-            )
+            .addAction(NotificationCompat.Action(null, resources.getString(R.string.note_show), showPendingPI))
+            .addAction(NotificationCompat.Action(null, resources.getString(R.string.note_hide), hidePendingPI))
             .setSmallIcon(R.mipmap.ic_launcher)
             .build()
         
@@ -577,9 +491,6 @@ class ServiceGo : Service() {
         }
     }
 
-    /**
-     * 初始化摇杆并设置监听器。
-     */
     private fun initJoyStick() {
         mJoystickViewModel = JoystickViewModel(application)
         mJoystickManager = JoystickWindowManager(this, mJoystickViewModel, object : JoystickViewModel.ActionListener {
@@ -598,39 +509,32 @@ class ServiceGo : Service() {
             }
 
             override fun onRouteControl(action: String) {
-                val intent = Intent(this@ServiceGo, ServiceGo::class.java)
+                val intent = Intent(this@ServiceGoRoot, ServiceGoRoot::class.java)
                 intent.putExtra(EXTRA_CONTROL_ACTION, action)
                 startService(intent)
             }
 
             override fun onRouteSeek(progress: Float) {
-                val intent = Intent(this@ServiceGo, ServiceGo::class.java)
+                val intent = Intent(this@ServiceGoRoot, ServiceGoRoot::class.java)
                 intent.putExtra(EXTRA_CONTROL_ACTION, CONTROL_SEEK)
                 intent.putExtra(EXTRA_SEEK_RATIO, progress)
                 startService(intent)
             }
             
             override fun onRouteSpeedChange(speed: Double) {
-                mSpeed = speed / 3.6 // km/h to m/s
+                mSpeed = speed / 3.6
             }
         })
     }
 
-    /**
-     * 初始化定位更新的后台线程与 Handler。
-     */
     private fun initGoLocation() {
-        // 创建 HandlerThread 实例，第一个参数是线程的名字
         mLocHandlerThread = HandlerThread(SERVICE_GO_HANDLER_NAME, Process.THREAD_PRIORITY_FOREGROUND)
-        // 启动 HandlerThread 线程
         mLocHandlerThread.start()
-        // Handler 对象与 HandlerThread 的 Looper 对象的绑定
         mLocHandler = object : Handler(mLocHandlerThread.looper) {
             override fun handleMessage(msg: Message) {
                 try {
                     Thread.sleep(100)
 
-                    // If not paused, advance the position along the route
                     if (!isStop) {
                         if (mRoutePoints.size >= 2) {
                             val speedForStep = if (speedFluctuation) {
@@ -643,161 +547,116 @@ class ServiceGo : Service() {
                         }
                     }
 
-                    // Always push mock location, even when paused (isStop=true).
-                    // This prevents the system from reverting to real location while paused.
-                    if (mRunMode == "root") {
+                    if (!isStop) {
                         portalTick()
-                    } else {
-                        setLocationNetwork()
-                        setLocationGPS()
                     }
 
-                    // Always schedule next update as long as the service is alive.
-                    // The loop is only truly stopped in onDestroy.
                     sendEmptyMessage(HANDLER_MSG_ID)
                 } catch (e: InterruptedException) {
-                    KailLog.e(this@ServiceGo, "ServiceGo", "handleMessage interrupted: ${e.message}")
+                    KailLog.e(this@ServiceGoRoot, "ServiceGoRoot", "handleMessage interrupted: ${e.message}")
                     Thread.currentThread().interrupt()
                 } catch (e: Exception) {
-                    KailLog.e(this@ServiceGo, "ServiceGo", "handleMessage exception: ${e.message}")
-                    // 防止死循环崩溃，稍微延迟后再发送消息
+                    KailLog.e(this@ServiceGoRoot, "ServiceGoRoot", "handleMessage exception: ${e.message}")
                     if (!isStop) {
-                         sendEmptyMessageDelayed(HANDLER_MSG_ID, 1000)
+                        sendEmptyMessageDelayed(HANDLER_MSG_ID, 1000)
                     }
                 }
             }
         }
     }
 
-    /**
-     * 启动定位循环：
-     * - 将 isStop 置为 false
-     * - 发送首个 Handler 消息，进入 100ms 周期的更新循环
-     */
     private fun startLocationLoop() {
         if (!this::mLocHandler.isInitialized) return
         isStop = false
-        if (locationLoopStarted) return // Already running the loop
+        if (locationLoopStarted) return
         locationLoopStarted = true
         mLocHandler.sendEmptyMessage(HANDLER_MSG_ID)
     }
 
-    /**
-     * 确保系统 GPS/Network TestProvider 已添加并启用（先移除再添加）。
-     * 第三方定位 SDK（如百度）依赖系统 Provider 才能接收位置更新。
-     */
-    private fun ensureNorootProviders() {
-        try {
-            removeTestProviderNetwork()
-            addTestProviderNetwork()
-            removeTestProviderGPS()
-            addTestProviderGPS()
-        } catch (e: Throwable) {
-            KailLog.e(this, "ServiceGo", "Error ensuring providers: ${e.message}")
-        }
-    }
-
-    /**
-     * 初始化 portal 命令通道：
-     * - 通过 sendExtraCommand("portal", "exchange_key") 交换随机 key
-     * - 成功后缓存 key 供后续命令使用
-     */
     private fun portalInitIfNeeded(): Boolean {
         if (portalRandomKey != null) return true
         val rely = Bundle()
-        KailLog.i(this, "ServiceGo", "sending exchange_key...")
+        KailLog.i(this, "ServiceGoRoot", "sending exchange_key...")
         val ok = kotlin.runCatching {
             mLocManager.sendExtraCommand(PORTAL_PROVIDER, "exchange_key", rely)
         }.onFailure {
-            KailLog.e(this, "ServiceGo", "sendExtraCommand exception: ${it.message}")
+            KailLog.e(this, "ServiceGoRoot", "sendExtraCommand exception: ${it.message}")
         }.getOrDefault(false)
         if (!ok) {
-            KailLog.e(this, "ServiceGo", "exchange_key failed (sendExtraCommand returned false)")
+            KailLog.e(this, "ServiceGoRoot", "exchange_key failed (sendExtraCommand returned false)")
             return false
         }
         val key = rely.getString("key")
         if (key.isNullOrBlank()) {
-            KailLog.e(this, "ServiceGo", "exchange_key failed (key is null/blank)")
+            KailLog.e(this, "ServiceGoRoot", "exchange_key failed (key is null/blank)")
             return false
         }
-        KailLog.i(this, "ServiceGo", "exchange_key success, key=$key")
+        KailLog.i(this, "ServiceGoRoot", "exchange_key success, key=$key")
         portalRandomKey = key
 
-        // 初始化 SO 加载
-        KailLog.i(this, "ServiceGo", ">>> Calling portalLoadNativeLibraryIfNeeded...")
+        KailLog.i(this, "ServiceGoRoot", ">>> Calling portalLoadNativeLibraryIfNeeded...")
         val nativeLoadResult = portalLoadNativeLibraryIfNeeded()
-        KailLog.i(this, "ServiceGo", ">>> portalLoadNativeLibraryIfNeeded result: $nativeLoadResult")
+        KailLog.i(this, "ServiceGoRoot", ">>> portalLoadNativeLibraryIfNeeded result: $nativeLoadResult")
 
         return true
     }
 
-    /**
-     * 加载 Native Hook 库到系统进程：
-     * - 复制 SO 到 /data/local/kail-lib
-     * - 通过 portal 发送 load_library 命令
-     */
     private fun portalLoadNativeLibraryIfNeeded(): Boolean {
-        KailLog.i(this, "ServiceGo", ">>> portalLoadNativeLibraryIfNeeded called")
+        KailLog.i(this, "ServiceGoRoot", ">>> portalLoadNativeLibraryIfNeeded called")
         
         if (!com.kail.location.utils.ShellUtils.hasRoot()) {
-            KailLog.e(this, "ServiceGo", ">>> No root access!")
+            KailLog.e(this, "ServiceGoRoot", ">>> No root access!")
             return false
         }
         
-        KailLog.i(this, "ServiceGo", ">>> Root access OK")
+        KailLog.i(this, "ServiceGoRoot", ">>> Root access OK")
 
-        // 尝试彻底关闭 SELinux 强制模式 (参考 Portal 的思路)
         val selinuxResult = com.kail.location.utils.ShellUtils.executeCommand("setenforce 0")
-        KailLog.i(this, "ServiceGo", ">>> setenforce 0 result: $selinuxResult")
+        KailLog.i(this, "ServiceGoRoot", ">>> setenforce 0 result: $selinuxResult")
 
         val soDir = java.io.File("/data/local/kail-lib")
-        // 彻底清理并重建目录，确保权限和上下文
         com.kail.location.utils.ShellUtils.executeCommand("rm -rf ${soDir.absolutePath}")
         com.kail.location.utils.ShellUtils.executeCommand("mkdir -p ${soDir.absolutePath}")
         com.kail.location.utils.ShellUtils.executeCommand("chmod 777 ${soDir.absolutePath}")
         com.kail.location.utils.ShellUtils.executeCommand("chcon u:object_r:system_file:s0 ${soDir.absolutePath}")
-        KailLog.i(this, "ServiceGo", ">>> Directory created: ${soDir.absolutePath}")
+        KailLog.i(this, "ServiceGoRoot", ">>> Directory created: ${soDir.absolutePath}")
         
         val soFile = java.io.File(soDir, "libkail_native_hook.so")
 
         runCatching {
             val nativeDir = applicationInfo.nativeLibraryDir
             val apkSoFile = java.io.File(nativeDir, "libkail_native_hook.so")
-            KailLog.i(this, "ServiceGo", ">>> nativeDir: $nativeDir")
-            KailLog.i(this, "ServiceGo", ">>> apkSoFile: ${apkSoFile.absolutePath}, exists: ${apkSoFile.exists()}")
+            KailLog.i(this, "ServiceGoRoot", ">>> nativeDir: $nativeDir")
+            KailLog.i(this, "ServiceGoRoot", ">>> apkSoFile: ${apkSoFile.absolutePath}, exists: ${apkSoFile.exists()}")
             
             if (apkSoFile.exists()) {
                 val copyResult = com.kail.location.utils.ShellUtils.executeCommand("cp ${apkSoFile.absolutePath} ${soFile.absolutePath}")
-                KailLog.i(this, "ServiceGo", ">>> cp result: $copyResult")
+                KailLog.i(this, "ServiceGoRoot", ">>> cp result: $copyResult")
                 val chmodResult = com.kail.location.utils.ShellUtils.executeCommand("chmod 777 ${soFile.absolutePath}")
-                KailLog.i(this, "ServiceGo", ">>> chmod result: $chmodResult")
-                // 修复 SELinux 上下文，使其可被系统进程执行 (参考 Portal 类似工具的实践)
+                KailLog.i(this, "ServiceGoRoot", ">>> chmod result: $chmodResult")
                 val chconResult = com.kail.location.utils.ShellUtils.executeCommand("chcon u:object_r:system_file:s0 ${soFile.absolutePath}")
-                KailLog.i(this, "ServiceGo", ">>> chcon result: $chconResult")
+                KailLog.i(this, "ServiceGoRoot", ">>> chcon result: $chconResult")
             } else {
-                KailLog.e(this, "ServiceGo", ">>> apkSoFile does NOT exist!")
+                KailLog.e(this, "ServiceGoRoot", ">>> apkSoFile does NOT exist!")
             }
         }.onFailure {
-            KailLog.e(this, "ServiceGo", ">>> Failed to copy native library: ${it.message}")
+            KailLog.e(this, "ServiceGoRoot", ">>> Failed to copy native library: ${it.message}")
             return false
         }
 
-        KailLog.i(this, "ServiceGo", ">>> soFile exists: ${soFile.exists()}")
+        KailLog.i(this, "ServiceGoRoot", ">>> soFile exists: ${soFile.exists()}")
         
-        // Get poll offset from settings
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val pollOffset = prefs.getString("setting_poll_offset", "0x394a4") ?: "0x394a4"
-        KailLog.i(this, "ServiceGo", ">>> poll offset: $pollOffset")
+        KailLog.i(this, "ServiceGoRoot", ">>> poll offset: $pollOffset")
         
         val loadResult = portalSend("load_library") {
             putString("path", soFile.absolutePath)
             putString("poll_offset", pollOffset)
         }
         
-        KailLog.i(this, "ServiceGo", ">>> loadResult: $loadResult")
+        KailLog.i(this, "ServiceGoRoot", ">>> loadResult: $loadResult")
         
-        // Send route simulation params after library loaded
-        // Native hook is only activated when both route simulation AND step frequency simulation are enabled
         if (loadResult) {
             if (isRouteSimulationCache && stepEnabledCache) {
                 portalSend("set_route_simulation") {
@@ -805,64 +664,50 @@ class ServiceGo : Service() {
                     putFloat("spm", stepFreqCache.toFloat())
                     putInt("mode", 0)
                 }
-                KailLog.i(this, "ServiceGo", ">>> Native hook loaded for route simulation (step freq enabled)")
+                KailLog.i(this, "ServiceGoRoot", ">>> Native hook loaded for route simulation (step freq enabled)")
             } else {
                 portalSend("set_route_simulation") {
                     putBoolean("active", false)
                     putFloat("spm", stepFreqCache.toFloat())
                     putInt("mode", 0)
                 }
-                KailLog.i(this, "ServiceGo", ">>> Native hook loaded but step freq disabled")
+                KailLog.i(this, "ServiceGoRoot", ">>> Native hook loaded but step freq disabled")
             }
         } else {
-            KailLog.e(this, "ServiceGo", ">>> Load failed!")
+            KailLog.e(this, "ServiceGoRoot", ">>> Load failed!")
         }
         
         return loadResult
     }
 
-    /**
-     * 通过 portal 通道发送命令：
-     * - 使用交换得到的 key 作为 command
-     * - 写入 command_id 与参数到 Bundle
-     */
     private fun portalSend(commandId: String, block: Bundle.() -> Unit = {}): Boolean {
         val key = portalRandomKey ?: return false
         val rely = Bundle()
         rely.putString("command_id", commandId)
         rely.block()
-        KailLog.i(this, "ServiceGo", "PORTAL发送：cmd=$commandId，内容=$rely",isHighFrequency = true)
+        KailLog.i(this, "ServiceGoRoot", "PORTAL发送：cmd=$commandId，内容=$rely",isHighFrequency = true)
         val ok = kotlin.runCatching {
             mLocManager.sendExtraCommand(PORTAL_PROVIDER, key, rely)
         }.onFailure {
-             KailLog.e(this, "ServiceGo", "portalSend exception command=$commandId: ${it.message}")
-             // If we get an exception, something is wrong with the connection, reset key
+             KailLog.e(this, "ServiceGoRoot", "portalSend exception command=$commandId: ${it.message}")
              portalRandomKey = null
              portalStarted = false
         }.getOrDefault(false)
         
         if (!ok) {
-            KailLog.e(this, "ServiceGo", "PORTAL结果失败：cmd=$commandId，可能密钥失效",isHighFrequency = true)
-            // If the command failed, maybe the key is invalid (system_server restarted)
-            // We should reset and try to re-init next time
+            KailLog.e(this, "ServiceGoRoot", "PORTAL结果失败：cmd=$commandId，可能密钥失效",isHighFrequency = true)
             portalRandomKey = null
             portalStarted = false
         } else {
-            KailLog.i(this, "ServiceGo", "PORTAL结果成功：cmd=$commandId",isHighFrequency = true)
+            KailLog.i(this, "ServiceGoRoot", "PORTAL结果成功：cmd=$commandId",isHighFrequency = true)
         }
         return ok
     }
 
-    /**
-     * 启动 Xposed 侧模拟引擎（仅一次）：
-     * - 若未初始化先交换 key
-     * - 发送 start 命令（速度/海拔/精度）
-     * - 同步步频设置
-     */
     private fun portalStartIfNeeded(): Boolean {
         if (portalStarted) return true
         if (!portalInitIfNeeded()) {
-            KailLog.e(this, "ServiceGo", "portalStartIfNeeded failed because init failed")
+            KailLog.e(this, "ServiceGoRoot", "portalStartIfNeeded failed because init failed")
             return false
         }
         val ok = portalSend("start") {
@@ -871,23 +716,19 @@ class ServiceGo : Service() {
             putFloat("accuracy", 1.0f)
         }
         if (ok) {
-            KailLog.i(this, "ServiceGo", "portal start command success")
+            KailLog.i(this, "ServiceGoRoot", "portal start command success")
             portalStarted = true
             portalSend("set_step_enabled") { putBoolean("enabled", stepEnabledCache) }
             portalSend("set_step_cadence") { putFloat("cadence", stepFreqCache.toFloat()) }
         } else {
-            KailLog.e(this, "ServiceGo", "portal start command failed")
+            KailLog.e(this, "ServiceGoRoot", "portal start command failed")
         }
         return ok
     }
 
-    /**
-     * 启动后立即同步一次状态到 Xposed：
-     * - set_altitude / set_speed / set_bearing / update_location / broadcast_location
-     */
     private fun portalUpdateOnce() {
         if (!portalStartIfNeeded()) {
-            KailLog.e(this, "ServiceGo", "portalUpdateOnce failed because start failed")
+            KailLog.e(this, "ServiceGoRoot", "portalUpdateOnce failed because start failed")
             return
         }
         portalSend("set_altitude") { putDouble("altitude", mCurAlt) }
@@ -901,14 +742,11 @@ class ServiceGo : Service() {
         portalSend("broadcast_location")
     }
 
-    /**
-     * 循环周期内向 Xposed 下发最新速度、朝向与位置并广播。
-     */
     private fun portalTick() {
         if (!portalStartIfNeeded()) return
         val speedToSet = if (isStop) 0.0f else mSpeed.toFloat()
         
-        KailLog.log(this, "ServiceGo", "Portal Tick: lat=$mCurLat, lng=$mCurLng, speed=$speedToSet", isHighFrequency = true)
+        KailLog.log(this, "ServiceGoRoot", "Portal Tick: lat=$mCurLat, lng=$mCurLng, speed=$speedToSet", isHighFrequency = true)
 
         portalSend("set_speed") { putFloat("speed", speedToSet) }
         portalSend("set_bearing") { putDouble("bearing", mCurBea.toDouble()) }
@@ -920,11 +758,6 @@ class ServiceGo : Service() {
         portalSend("broadcast_location")
     }
 
-    
-
-    /**
-     * 安全停止 Xposed 侧模拟引擎并清理状态。
-     */
     private fun portalStopSafe() {
         kotlin.runCatching {
             portalSend("stop")
@@ -933,12 +766,6 @@ class ServiceGo : Service() {
         portalRandomKey = null
     }
 
-    /**
-     * 按给定距离推进路线：
-     * - 在当前路段上累积进度，满段切换下一段
-     * - 线性插值当前位置与方位角
-     * - 处理循环/非循环的结束逻辑
-     */
     private fun advanceAlongRoute(distanceMeters: Double) {
         var remaining = distanceMeters
         while (remaining > 0 && mRoutePoints.size >= 2) {
@@ -1006,9 +833,6 @@ class ServiceGo : Service() {
         }
     }
 
-    /**
-     * 预计算路线累计距离数组与总距离，供进度与 Seek 使用。
-     */
     private fun calculateRouteDistances() {
         mRouteCumulativeDistances.clear()
         mRouteCumulativeDistances.add(0.0)
@@ -1028,9 +852,6 @@ class ServiceGo : Service() {
         mTotalDistance = total
     }
 
-    /**
-     * 更新摇杆悬浮窗的路线进度与当前位置展示。
-     */
     private fun updateJoystickStatus() {
         if (this::mJoystickManager.isInitialized && mRoutePoints.isNotEmpty()) {
             val currentDist = if (mRouteIndex < mRouteCumulativeDistances.size)
@@ -1050,179 +871,6 @@ class ServiceGo : Service() {
         }
     }
 
-    /**
-     * 计算两点之间的方位角（单位：度）。
-     */
-    // bearingDegrees moved to GeoMath
-
-    /**
-     * 移除 GPS 测试提供者。
-     */
-    private fun removeTestProviderGPS() {
-        try {
-            if (mLocManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                mLocManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, false)
-                mLocManager.removeTestProvider(LocationManager.GPS_PROVIDER)
-            }
-        } catch (e: Exception) {
-            KailLog.e(this, "ServiceGo", "removeTestProviderGPS error: ${e.message}")
-        }
-    }
-
-    // 注意下面临时添加 @SuppressLint("wrongconstant") 以处理 addTestProvider 参数值的 lint 错误
-    @SuppressLint("WrongConstant")
-    /**
-     * 添加并启用 GPS 测试提供者（Android S 及以上使用 ProviderProperties）。
-     */
-    private fun addTestProviderGPS() {
-        try {
-            // 注意，由于 android api 问题，下面的参数会提示错误(以下参数是通过相关API获取的真实GPS参数，不是随便写的)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    mLocManager.addTestProvider(
-                        LocationManager.GPS_PROVIDER, false, true, false,
-                        false, true, true, true, ProviderProperties.POWER_USAGE_HIGH, ProviderProperties.ACCURACY_FINE
-                    )
-                } else {
-                    @Suppress("DEPRECATION")
-                    mLocManager.addTestProvider(
-                        LocationManager.GPS_PROVIDER, false, true, false,
-                        false, true, true, true, 3 /* POWER_HIGH */, 1 /* ACCURACY_FINE */
-                    )
-                }
-            if (!mLocManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                mLocManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
-            }
-        } catch (e: Exception) {
-            KailLog.e(this, "ServiceGo", "addTestProviderGPS error: ${e.message}")
-            if (e.message?.contains("not allowed to perform MOCK_LOCATION") == true) {
-                Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(this, "请在开发者选项中设置此应用为模拟位置应用", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    /**
-     * 为 GPS 提供者设置模拟位置（精度、海拔、方向、速度等属性）。
-     */
-    private fun setLocationGPS() {
-        try {
-            // 尽可能模拟真实的 GPS 数据
-            val loc = Location(LocationManager.GPS_PROVIDER)
-            loc.accuracy = 1.0f // ACCURACY_FINE
-            loc.altitude = mCurAlt                     // 设置高度，在 WGS 84 参考坐标系中的米
-            loc.bearing = mCurBea                       // 方向（度）
-            loc.latitude = mCurLat                   // 纬度（度）
-            loc.longitude = mCurLng                  // 经度（度）
-            loc.time = System.currentTimeMillis()    // 本地时间
-            val speedToSet = if (isStop) 0.0f else mSpeed.toFloat()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                loc.speed = speedToSet
-                loc.speedAccuracyMetersPerSecond = 0.1f
-                loc.verticalAccuracyMeters = 0.1f
-                loc.bearingAccuracyDegrees = 0.1f
-            } else {
-                loc.speed = speedToSet
-            }
-            loc.elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
-            val bundle = Bundle()
-            bundle.putInt("satellites", 7)
-            loc.extras = bundle
-
-            mLocManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, loc)
-        } catch (e: Exception) {
-            KailLog.e(this, "ServiceGo", "setLocationGPS error: ${e.message}")
-        }
-    }
-
-    /**
-     * 移除 Network 测试提供者。
-     */
-    private fun removeTestProviderNetwork() {
-        try {
-            if (mLocManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                mLocManager.setTestProviderEnabled(LocationManager.NETWORK_PROVIDER, false)
-                mLocManager.removeTestProvider(LocationManager.NETWORK_PROVIDER)
-            }
-        } catch (e: Exception) {
-            KailLog.e(this, "ServiceGo", "removeTestProviderNetwork error: ${e.message}")
-        }
-    }
-
-    // 注意下面临时添加 @SuppressLint("wrongconstant") 以处理 addTestProvider 参数值的 lint 错误
-    @SuppressLint("WrongConstant")
-    /**
-     * Adds the Network test provider with appropriate settings.
-     * Uses ProviderProperties on Android S and above; falls back to
-     * deprecated integer constants on older versions. Ensures the
-     * provider is enabled after addition.
-     */
-    private fun addTestProviderNetwork() {
-        try {
-            // 注意，由于 android api 问题，下面的参数会提示错误(以下参数是通过相关API获取的真实NETWORK参数，不是随便写的)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                mLocManager.addTestProvider(
-                    LocationManager.NETWORK_PROVIDER, true, false,
-                    true, true, true, true,
-                    true, ProviderProperties.POWER_USAGE_LOW, ProviderProperties.ACCURACY_COARSE
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                mLocManager.addTestProvider(
-                    LocationManager.NETWORK_PROVIDER, true, false,
-                    true, true, true, true,
-                    true, 1 /* POWER_LOW */, 2 /* ACCURACY_COARSE */
-                )
-            }
-            if (!mLocManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                mLocManager.setTestProviderEnabled(LocationManager.NETWORK_PROVIDER, true)
-            }
-        } catch (e: SecurityException) {
-            KailLog.e(this, "ServiceGo", "addTestProviderNetwork error: ${e.message}")
-            if (e.message?.contains("not allowed to perform MOCK_LOCATION") == true) {
-                Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(this, "请在开发者选项中设置此应用为模拟位置应用", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    /**
-     * 为 Network 提供者设置模拟位置（精度、海拔、方向、速度等属性）。
-     */
-    private fun setLocationNetwork() {
-        try {
-            // 尽可能模拟真实的 GPS 数据
-            val loc = Location(LocationManager.NETWORK_PROVIDER)
-            loc.accuracy = 1.0f // ACCURACY_FINE
-            loc.altitude = mCurAlt                     // 设置高度，在 WGS 84 参考坐标系中的米
-            loc.bearing = mCurBea                       // 方向（度）
-            loc.latitude = mCurLat                   // 纬度（度）
-            loc.longitude = mCurLng                  // 经度（度）
-            loc.time = System.currentTimeMillis()    // 本地时间
-            val speedToSet = if (isStop) 0.0f else mSpeed.toFloat()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                loc.speed = speedToSet
-                loc.speedAccuracyMetersPerSecond = 0.1f
-                loc.verticalAccuracyMeters = 0.1f
-                loc.bearingAccuracyDegrees = 0.1f
-            } else {
-                loc.speed = speedToSet
-            }
-            loc.elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
-            val bundle = Bundle()
-            bundle.putInt("satellites", 7)
-            loc.extras = bundle
-
-            mLocManager.setTestProviderLocation(LocationManager.NETWORK_PROVIDER, loc)
-        } catch (e: Exception) {
-            KailLog.e(this, "ServiceGo", "setLocationNetwork error: ${e.message}")
-        }
-    }
-
-    /**
-     * 通知栏操作（显示/隐藏摇杆）的广播接收器。
-     */
     inner class NoteActionReceiver : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val action = intent.action
@@ -1237,12 +885,9 @@ class ServiceGo : Service() {
         }
     }
 
-    /**
-     * ServiceGo 的 Binder。
-     */
-    inner class ServiceGoBinder : Binder() {
-        fun getService(): ServiceGo {
-            return this@ServiceGo
+    inner class ServiceGoRootBinder : Binder() {
+        fun getService(): ServiceGoRoot {
+            return this@ServiceGoRoot
         }
     }
 }

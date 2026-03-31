@@ -87,7 +87,12 @@
         <service
             android:exported="false"
             android:foregroundServiceType="location"
-            android:name="com.kail.location.service.ServiceGo" />
+            android:name="com.kail.location.service.ServiceGoRoot" />
+
+        <service
+            android:exported="false"
+            android:foregroundServiceType="location"
+            android:name="com.kail.location.service.ServiceGoNoroot" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

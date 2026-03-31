@@ -21,7 +21,8 @@ import com.baidu.mapapi.search.sug.SuggestionResult
 import com.baidu.mapapi.search.sug.SuggestionSearch
 import com.baidu.mapapi.search.sug.SuggestionSearchOption
 import com.kail.location.models.RouteInfo
-import com.kail.location.service.ServiceGo
+import com.kail.location.service.ServiceGoRoot
+import com.kail.location.service.ServiceGoNoroot
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -100,9 +101,9 @@ class NavigationSimulationViewModel(application: Application) : AndroidViewModel
 
     private val statusReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == ServiceGo.ACTION_STATUS_CHANGED) {
-                val isSim = intent.getBooleanExtra(ServiceGo.EXTRA_IS_SIMULATING, false)
-                val isPau = intent.getBooleanExtra(ServiceGo.EXTRA_IS_PAUSED, false)
+            if (intent?.action == "com.kail.location.service.STATUS_CHANGED") {
+                val isSim = intent.getBooleanExtra("is_simulating", false)
+                val isPau = intent.getBooleanExtra("is_paused", false)
                 _isSimulating.value = isSim
                 _isPaused.value = isPau
                 if (isSim) {
@@ -140,7 +141,7 @@ class NavigationSimulationViewModel(application: Application) : AndroidViewModel
         initSearchListeners()
 
         // Register receiver
-        val filter = android.content.IntentFilter(ServiceGo.ACTION_STATUS_CHANGED)
+        val filter = android.content.IntentFilter("com.kail.location.service.STATUS_CHANGED")
         ContextCompat.registerReceiver(application, statusReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
     }
 
@@ -321,21 +322,27 @@ class NavigationSimulationViewModel(application: Application) : AndroidViewModel
 
     private fun startSimulationService(points: List<LatLng>) {
         val app = getApplication<Application>()
-        val intent = Intent(app, ServiceGo::class.java)
+        val currentRunMode = runMode.value
+        val serviceClass = if (currentRunMode == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+        val intent = Intent(app, serviceClass)
         
-        // Flatten List<LatLng> to DoubleArray [lng1, lat1, lng2, lat2, ...]
         val pointsArray = DoubleArray(points.size * 2)
         for (i in points.indices) {
             pointsArray[i * 2] = points[i].longitude
             pointsArray[i * 2 + 1] = points[i].latitude
         }
         
-        intent.putExtra(ServiceGo.EXTRA_ROUTE_POINTS, pointsArray)
-        intent.putExtra(ServiceGo.EXTRA_ROUTE_LOOP, false) // Default no loop for A-B nav
-        intent.putExtra(ServiceGo.EXTRA_JOYSTICK_ENABLED, true)
-        intent.putExtra(ServiceGo.EXTRA_ROUTE_SPEED, _speed.value.toFloat())
-        intent.putExtra(ServiceGo.EXTRA_COORD_TYPE, ServiceGo.COORD_BD09)
-        intent.putExtra(ServiceGo.EXTRA_RUN_MODE, runMode.value)
+        val extraRoutePoints = if (currentRunMode == "root") ServiceGoRoot.EXTRA_ROUTE_POINTS else ServiceGoNoroot.EXTRA_ROUTE_POINTS
+        val extraRouteLoop = if (currentRunMode == "root") ServiceGoRoot.EXTRA_ROUTE_LOOP else ServiceGoNoroot.EXTRA_ROUTE_LOOP
+        val extraJoystickEnabled = if (currentRunMode == "root") ServiceGoRoot.EXTRA_JOYSTICK_ENABLED else ServiceGoNoroot.EXTRA_JOYSTICK_ENABLED
+        val extraRouteSpeed = if (currentRunMode == "root") ServiceGoRoot.EXTRA_ROUTE_SPEED else ServiceGoNoroot.EXTRA_ROUTE_SPEED
+        val extraCoordType = if (currentRunMode == "root") ServiceGoRoot.EXTRA_COORD_TYPE else ServiceGoNoroot.EXTRA_COORD_TYPE
+        
+        intent.putExtra(extraRoutePoints, pointsArray)
+        intent.putExtra(extraRouteLoop, false)
+        intent.putExtra(extraJoystickEnabled, true)
+        intent.putExtra(extraRouteSpeed, _speed.value.toFloat())
+        intent.putExtra(extraCoordType, "BD09")
         
         ContextCompat.startForegroundService(app, intent)
         _isSimulating.value = true
@@ -370,23 +377,28 @@ class NavigationSimulationViewModel(application: Application) : AndroidViewModel
 
     fun pauseSimulation() {
         val app = getApplication<Application>()
-        val intent = Intent(app, ServiceGo::class.java)
-        intent.putExtra(ServiceGo.EXTRA_CONTROL_ACTION, ServiceGo.CONTROL_PAUSE)
+        val serviceClass = if (runMode.value == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+        val controlAction = if (runMode.value == "root") ServiceGoRoot.CONTROL_PAUSE else ServiceGoNoroot.CONTROL_PAUSE
+        val intent = Intent(app, serviceClass)
+        intent.putExtra("EXTRA_CONTROL_ACTION", controlAction)
         app.startService(intent)
         _isPaused.value = true
     }
 
     fun resumeSimulation() {
         val app = getApplication<Application>()
-        val intent = Intent(app, ServiceGo::class.java)
-        intent.putExtra(ServiceGo.EXTRA_CONTROL_ACTION, ServiceGo.CONTROL_RESUME)
+        val serviceClass = if (runMode.value == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+        val controlAction = if (runMode.value == "root") ServiceGoRoot.CONTROL_RESUME else ServiceGoNoroot.CONTROL_RESUME
+        val intent = Intent(app, serviceClass)
+        intent.putExtra("EXTRA_CONTROL_ACTION", controlAction)
         app.startService(intent)
         _isPaused.value = false
     }
 
     fun stopSimulation() {
         val app = getApplication<Application>()
-        app.stopService(Intent(app, ServiceGo::class.java))
+        val serviceClass = if (runMode.value == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+        app.stopService(Intent(app, serviceClass))
         _isSimulating.value = false
         _isPaused.value = false
         stopLocationMonitor()
@@ -394,9 +406,12 @@ class NavigationSimulationViewModel(application: Application) : AndroidViewModel
 
     fun seekProgress(ratio: Float) {
         val app = getApplication<Application>()
-        val intent = Intent(app, ServiceGo::class.java)
-        intent.putExtra(ServiceGo.EXTRA_CONTROL_ACTION, ServiceGo.CONTROL_SEEK)
-        intent.putExtra(ServiceGo.EXTRA_SEEK_RATIO, ratio)
+        val serviceClass = if (runMode.value == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+        val controlAction = if (runMode.value == "root") ServiceGoRoot.CONTROL_SEEK else ServiceGoNoroot.CONTROL_SEEK
+        val seekRatio = if (runMode.value == "root") ServiceGoRoot.EXTRA_SEEK_RATIO else ServiceGoNoroot.EXTRA_SEEK_RATIO
+        val intent = Intent(app, serviceClass)
+        intent.putExtra("EXTRA_CONTROL_ACTION", controlAction)
+        intent.putExtra(seekRatio, ratio)
         app.startService(intent)
     }
 

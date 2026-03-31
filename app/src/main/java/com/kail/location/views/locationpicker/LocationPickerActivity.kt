@@ -45,7 +45,8 @@ import com.baidu.mapapi.search.geocode.*
 import com.kail.location.utils.KailLog
 import com.kail.location.repositories.DataBaseHistoryLocation
 import com.kail.location.views.theme.locationTheme
-import com.kail.location.service.ServiceGo
+import com.kail.location.service.ServiceGoRoot
+import com.kail.location.service.ServiceGoNoroot
 import com.kail.location.utils.GoUtils
 import com.kail.location.utils.MapUtils
 import com.kail.location.utils.ShareUtils
@@ -91,7 +92,7 @@ class LocationPickerActivity : BaseActivity(), SensorEventListener {
     private var mCurrentDirection = 0.0f
     private var isFirstLoc = true // 是否首次定位
     private var isMockServStart = false
-    private var mServiceBinder: ServiceGo.ServiceGoBinder? = null
+    private var mServiceBinder: IBinder? = null
     private var mConnection: ServiceConnection? = null
 
     /*============================== 历史记录 相关 ==============================*/
@@ -195,7 +196,7 @@ class LocationPickerActivity : BaseActivity(), SensorEventListener {
 
         mConnection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName, service: IBinder) {
-                mServiceBinder = service as ServiceGo.ServiceGoBinder
+                mServiceBinder = service
             }
 
             override fun onServiceDisconnected(name: ComponentName) {
@@ -660,7 +661,8 @@ class LocationPickerActivity : BaseActivity(), SensorEventListener {
 
         if (isMockServStart) {
             KailLog.i(this, "LocationPickerActivity", "Stopping Mock Service...")
-            val intent = Intent(this, ServiceGo::class.java)
+            val serviceClass = if (runMode == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+            val intent = Intent(this, serviceClass)
             try {
                 if (mConnection != null) {
                     unbindService(mConnection!!)
@@ -672,15 +674,13 @@ class LocationPickerActivity : BaseActivity(), SensorEventListener {
             isMockServStart = false
         } else {
             KailLog.i(this, "LocationPickerActivity", "Starting Mock Service...")
-            val intent = Intent(this, ServiceGo::class.java)
-            // 传递坐标信息（保持 BD-09，并指明坐标类型）
+            val serviceClass = if (runMode == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+            val intent = Intent(this, serviceClass)
             intent.putExtra(LAT_MSG_ID, mMarkLatLngMap.latitude)
             intent.putExtra(LNG_MSG_ID, mMarkLatLngMap.longitude)
-            intent.putExtra(ServiceGo.EXTRA_COORD_TYPE, ServiceGo.COORD_BD09)
-            intent.putExtra(ServiceGo.EXTRA_RUN_MODE, runMode)
-            // 读取摇杆配置并传递
+            intent.putExtra("EXTRA_COORD_TYPE", "BD09")
             val joystickEnabled = sharedPreferences.getBoolean("setting_joystick_enabled", true)
-            intent.putExtra(ServiceGo.EXTRA_JOYSTICK_ENABLED, joystickEnabled)
+            intent.putExtra("EXTRA_JOYSTICK_ENABLED", joystickEnabled)
             KailLog.i(this, "LocationPickerActivity", "Putting extras: lat=${mMarkLatLngMap.latitude}, lng=${mMarkLatLngMap.longitude}, type=BD09, runMode=$runMode, joystick=$joystickEnabled")
 
             // 自动保存历史记录

@@ -21,7 +21,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.lifecycle.viewModelScope
 import androidx.core.content.ContextCompat
-import com.kail.location.service.ServiceGo
+import com.kail.location.service.ServiceGoRoot
+import com.kail.location.service.ServiceGoNoroot
 import com.kail.location.views.locationpicker.LocationPickerActivity
 
 /**
@@ -119,19 +120,23 @@ class LocationSimulationViewModel(application: Application) : AndroidViewModel(a
                     )
                 }
             } catch (_: Exception) {}
-            val intent = Intent(app, ServiceGo::class.java)
+            val serviceClass = if (currentRunMode == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+            val extraJoystickEnabled = if (currentRunMode == "root") ServiceGoRoot.EXTRA_JOYSTICK_ENABLED else ServiceGoNoroot.EXTRA_JOYSTICK_ENABLED
+            val extraCoordType = if (currentRunMode == "root") ServiceGoRoot.EXTRA_COORD_TYPE else ServiceGoNoroot.EXTRA_COORD_TYPE
+            val intent = Intent(app, serviceClass)
             intent.putExtra(LocationPickerActivity.LNG_MSG_ID, info.longitude)
             intent.putExtra(LocationPickerActivity.LAT_MSG_ID, info.latitude)
             intent.putExtra(LocationPickerActivity.ALT_MSG_ID, 55.0)
-            intent.putExtra(ServiceGo.EXTRA_JOYSTICK_ENABLED, isJoystickEnabled.value)
-            intent.putExtra(ServiceGo.EXTRA_COORD_TYPE, ServiceGo.COORD_BD09)
-            intent.putExtra(ServiceGo.EXTRA_RUN_MODE, currentRunMode)
+            intent.putExtra(extraJoystickEnabled, isJoystickEnabled.value)
+            intent.putExtra(extraCoordType, "BD09")
             intent.putExtra("EXTRA_IS_ROUTE_SIMULATION", false)
             
             ContextCompat.startForegroundService(app, intent)
             _isSimulating.value = true
         } else {
-            app.stopService(Intent(app, ServiceGo::class.java))
+            val currentRunMode = sharedPreferences.getString("setting_run_mode", "root") ?: "root"
+            val serviceClass = if (currentRunMode == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+            app.stopService(Intent(app, serviceClass))
             _isSimulating.value = false
         }
     }
@@ -149,8 +154,11 @@ class LocationSimulationViewModel(application: Application) : AndroidViewModel(a
             .putBoolean("setting_joystick_enabled", enabled)
             .apply()
         if (_isSimulating.value) {
-            val intent = Intent(app, ServiceGo::class.java)
-            intent.putExtra(ServiceGo.EXTRA_JOYSTICK_ENABLED, enabled)
+            val currentRunMode = sharedPreferences.getString("setting_run_mode", "noroot") ?: "noroot"
+            val serviceClass = if (currentRunMode == "root") ServiceGoRoot::class.java else ServiceGoNoroot::class.java
+            val extraJoystickEnabled = if (currentRunMode == "root") ServiceGoRoot.EXTRA_JOYSTICK_ENABLED else ServiceGoNoroot.EXTRA_JOYSTICK_ENABLED
+            val intent = Intent(app, serviceClass)
+            intent.putExtra(extraJoystickEnabled, enabled)
             app.startService(intent)
         }
     }

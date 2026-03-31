@@ -227,7 +227,8 @@ class LocationPickerViewModel(application: Application) : AndroidViewModel(appli
     fun toggleMock() {
         val now = _isMocking.value
         if (now) {
-            mockRepo.stopMock()
+            val mode = _runMode.value
+            mockRepo.stopMock(mode)
             _isMocking.value = false
         } else {
             val loc = _targetLocation.value

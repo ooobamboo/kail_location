@@ -25,7 +25,6 @@ import com.kail.location.views.navigationsimulation.NavigationSimulationActivity
 import android.hardware.SensorEventListener
 import com.baidu.mapapi.map.MyLocationConfiguration
 import com.baidu.mapapi.map.BitmapDescriptorFactory
-import com.kail.location.service.ServiceGo
 import com.kail.location.utils.KailLog
 import com.kail.location.utils.MapUtils
 import androidx.core.content.ContextCompat
