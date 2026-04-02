@@ -47,7 +47,8 @@ fun SettingsScreen(
     val logEnabled by viewModel.logEnabled.collectAsState()
     val historyExpiration by viewModel.historyExpiration.collectAsState()
     val baiduMapKey by viewModel.baiduMapKey.collectAsState()
-    val pollOffset by viewModel.pollOffset.collectAsState()
+    val writeOffset by viewModel.writeOffset.collectAsState()
+    val convertOffset by viewModel.convertOffset.collectAsState()
 
     Scaffold(
         topBar = {
@@ -161,10 +162,17 @@ fun SettingsScreen(
             )
 
             EditTextPreference(
-                title = "传感器参数", // setting_poll_offset
-                value = pollOffset,
-                onValueChange = { viewModel.updateStringPreference(SettingsViewModel.KEY_POLL_OFFSET, it) },
-                description = "请在GitHub传感器参数.md中获得"
+                title = "Write 偏移量", // setting_write_offset
+                value = writeOffset,
+                onValueChange = { viewModel.updateStringPreference(SettingsViewModel.KEY_WRITE_OFFSET, it) },
+                description = "SensorEventQueue::write 偏移"
+            )
+
+            EditTextPreference(
+                title = "Convert 偏移量", // setting_convert_offset
+                value = convertOffset,
+                onValueChange = { viewModel.updateStringPreference(SettingsViewModel.KEY_CONVERT_OFFSET, it) },
+                description = "convertToSensorEvent 偏移"
             )
 
             EditTextPreference(

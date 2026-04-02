@@ -117,7 +117,7 @@ internal object FakeLocState {
     /**
      * Load native library into system_server process
      */
-    fun loadNativeLibrary(path: String): Pair<Boolean, String> {
+    fun loadNativeLibrary(path: String, writeOffset: String = "", convertOffset: String = ""): Pair<Boolean, String> {
         return try {
             val file = File(path)
             if (!file.exists()) {
@@ -131,6 +131,24 @@ internal object FakeLocState {
                 nativeLibraryLoaded = true
                 android.util.Log.i("NativeHook", "Library loaded, calling nativeInitHook...")
                 Log.i(TAG, "Native library loaded successfully: $path")
+                
+                // Apply pending offsets
+                pendingWriteOffset?.let {
+                    setWriteOffset(it)
+                    pendingWriteOffset = null
+                }
+                pendingConvertOffset?.let {
+                    setConvertOffset(it)
+                    pendingConvertOffset = null
+                }
+                
+                // Also apply new offsets passed in
+                if (writeOffset.isNotEmpty()) {
+                    setWriteOffset(writeOffset)
+                }
+                if (convertOffset.isNotEmpty()) {
+                    setConvertOffset(convertOffset)
+                }
                 
                 // Initialize hook and sensor simulator
                 try {
@@ -221,30 +239,62 @@ internal object FakeLocState {
         }
     }
 
-    fun setPollOffset(offsetString: String) {
-        if (nativeLibraryLoaded) {
-            try {
-                val offset = offsetString.toLongOrNull() ?: run {
-                    if (offsetString.startsWith("0x", ignoreCase = true)) {
-                        offsetString.substring(2).toLongOrNull(16)
-                    } else {
-                        null
-                    }
-                }
-                if (offset != null) {
-                    nativeSetPollOffset(offset)
-                    android.util.Log.i("NativeHook", "Poll offset set to: $offsetString ($offset)")
+    private var pendingWriteOffset: String? = null
+    private var pendingConvertOffset: String? = null
+
+    fun setConvertOffset(offsetString: String) {
+        try {
+            val offset = offsetString.toLongOrNull() ?: run {
+                if (offsetString.startsWith("0x", ignoreCase = true)) {
+                    offsetString.substring(2).toLongOrNull(16)
                 } else {
-                    android.util.Log.e("NativeHook", "Invalid poll offset: $offsetString")
+                    null
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("NativeHook", "Failed to set poll offset: ${e.message}")
             }
+            if (offset != null) {
+                if (nativeLibraryLoaded) {
+                    nativeSetConvertOffset(offset)
+                    android.util.Log.i("NativeHook", "Convert offset set to: $offsetString ($offset)")
+                } else {
+                    pendingConvertOffset = offsetString
+                    android.util.Log.i("NativeHook", "Convert offset saved (pending): $offsetString ($offset)")
+                }
+            } else {
+                android.util.Log.e("NativeHook", "Invalid convert offset: $offsetString")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("NativeHook", "Failed to set convert offset: ${e.message}")
+        }
+    }
+
+    fun setWriteOffset(offsetString: String) {
+        try {
+            val offset = offsetString.toLongOrNull() ?: run {
+                if (offsetString.startsWith("0x", ignoreCase = true)) {
+                    offsetString.substring(2).toLongOrNull(16)
+                } else {
+                    null
+                }
+            }
+            if (offset != null) {
+                if (nativeLibraryLoaded) {
+                    nativeSetWriteOffset(offset)
+                    android.util.Log.i("NativeHook", "Write offset set to: $offsetString ($offset)")
+                } else {
+                    pendingWriteOffset = offsetString
+                    android.util.Log.i("NativeHook", "Write offset saved (pending): $offsetString ($offset)")
+                }
+            } else {
+                android.util.Log.e("NativeHook", "Invalid write offset: $offsetString")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("NativeHook", "Failed to set write offset: ${e.message}")
         }
     }
 
     // Native methods (implemented in C++)
-    private external fun nativeSetPollOffset(offset: Long)
+    private external fun nativeSetWriteOffset(offset: Long)
+    private external fun nativeSetConvertOffset(offset: Long)
     private external fun nativeSetRouteSimulation(active: Boolean, spm: Float, mode: Int)
     private external fun nativeSetGaitParams(spm: Float, mode: Int, enable: Boolean)
     private external fun nativeReloadConfig(): Boolean

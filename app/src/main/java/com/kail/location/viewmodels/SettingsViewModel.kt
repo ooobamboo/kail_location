@@ -32,12 +32,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         const val KEY_LOG_ENABLED = "setting_log_enabled"
         const val KEY_HISTORY_EXPIRATION = "setting_history_expiration"
         const val KEY_BAIDU_MAP_KEY = "setting_baidu_map_key"
-        const val KEY_POLL_OFFSET = "setting_poll_offset"
+        const val KEY_WRITE_OFFSET = "setting_write_offset"
+        const val KEY_CONVERT_OFFSET = "setting_convert_offset"
     }
 
-    private val _pollOffset = MutableStateFlow(prefs.getString(KEY_POLL_OFFSET, "") ?: "")
-    /** Poll 偏移量偏好的状态流。 */
-    val pollOffset: StateFlow<String> = _pollOffset.asStateFlow()
+    private val _writeOffset = MutableStateFlow(prefs.getString(KEY_WRITE_OFFSET, "") ?: "")
+    /** Write 偏移量偏好的状态流。 */
+    val writeOffset: StateFlow<String> = _writeOffset.asStateFlow()
+
+    private val _convertOffset = MutableStateFlow(prefs.getString(KEY_CONVERT_OFFSET, "") ?: "")
+    /** Convert 偏移量偏好的状态流。 */
+    val convertOffset: StateFlow<String> = _convertOffset.asStateFlow()
 
     private val _joystickType = MutableStateFlow(prefs.getString(KEY_JOYSTICK_TYPE, "0") ?: "0")
     /** 摇杆类型偏好的状态流。 */
@@ -104,7 +109,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             KEY_RANDOM_OFFSET -> _randomOffset.value = sharedPreferences.getBoolean(key, false)
             KEY_LOG_ENABLED -> _logEnabled.value = sharedPreferences.getBoolean(key, false)
             KEY_HISTORY_EXPIRATION -> _historyExpiration.value = sharedPreferences.getString(key, "7.0") ?: "7.0"
-            KEY_POLL_OFFSET -> _pollOffset.value = sharedPreferences.getString(key, "") ?: ""
+            KEY_WRITE_OFFSET -> _writeOffset.value = sharedPreferences.getString(key, "") ?: ""
+            KEY_CONVERT_OFFSET -> _convertOffset.value = sharedPreferences.getString(key, "") ?: ""
         }
     }
 

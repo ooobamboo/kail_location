@@ -655,12 +655,14 @@ class ServiceGoRoot : Service() {
         KailLog.i(this, "ServiceGoRoot", ">>> soFile exists: ${soFile.exists()}")
         
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val pollOffset = prefs.getString("setting_poll_offset", "0x394a4") ?: "0x394a4"
-        KailLog.i(this, "ServiceGoRoot", ">>> poll offset: $pollOffset")
+        val writeOffset = prefs.getString("setting_write_offset", "") ?: ""
+        val convertOffset = prefs.getString("setting_convert_offset", "") ?: ""
+        KailLog.i(this, "ServiceGoRoot", ">>> write offset: $writeOffset, convert offset: $convertOffset")
         
         val loadResult = portalSend("load_library") {
             putString("path", soFile.absolutePath)
-            putString("poll_offset", pollOffset)
+            putString("write_offset", writeOffset)
+            putString("convert_offset", convertOffset)
         }
         
         KailLog.i(this, "ServiceGoRoot", ">>> loadResult: $loadResult")

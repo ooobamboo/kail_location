@@ -266,8 +266,9 @@ class RouteSimulationViewModel(application: Application) : AndroidViewModel(appl
                 _toastMessage.value = "步频模拟需要 ROOT 模式"
                 return false
             }
-            val pollOffset = sharedPreferences.getString("setting_poll_offset", "") ?: ""
-            if (pollOffset.isEmpty()) {
+            val writeOffset = sharedPreferences.getString("setting_write_offset", "") ?: ""
+            val convertOffset = sharedPreferences.getString("setting_convert_offset", "") ?: ""
+            if (writeOffset.isEmpty() && convertOffset.isEmpty()) {
                 _toastMessage.value = "请先在设置中配置传感器参数"
                 return false
             }

@@ -114,16 +114,14 @@ internal object KailCommandHandler {
             }
             "load_library" -> {
                 val path = out.getString("path") ?: return false
-                val pollOffset = out.getString("poll_offset") ?: ""
+                val writeOffset = out.getString("write_offset") ?: ""
+                val convertOffset = out.getString("convert_offset") ?: ""
                 try {
-                    val result = FakeLocState.loadNativeLibrary(path)
-                    if (result.first && pollOffset.isNotEmpty()) {
-                        FakeLocState.setPollOffset(pollOffset)
-                    }
+                    val result = FakeLocState.loadNativeLibrary(path, writeOffset, convertOffset)
                     out.putBoolean("ok", result.first)
                     out.putString("result", result.second)
-                    KailLog.d(null, "XPOSED", "PORTAL接收：加载SO库 path=$path offset=$pollOffset result=${result.second}")
-                    android.util.Log.i("NativeHook", "Library load result: ${result.first}, offset=$pollOffset")
+                    KailLog.d(null, "XPOSED", "PORTAL接收：加载SO库 path=$path write_offset=$writeOffset convert_offset=$convertOffset result=${result.second}")
+                    android.util.Log.i("NativeHook", "Library load result: ${result.first}, write_offset=$writeOffset convert_offset=$convertOffset")
                 } catch (e: Throwable) {
                     out.putBoolean("ok", false)
                     out.putString("result", e.message ?: "unknown error")
@@ -132,15 +130,27 @@ internal object KailCommandHandler {
                 }
                 return true
             }
-            "set_poll_offset" -> {
-                val offset = out.getString("offset") ?: "0x394a4"
+            "set_write_offset" -> {
+                val offset = out.getString("offset") ?: "0x122e0"
                 try {
-                    FakeLocState.setPollOffset(offset)
+                    FakeLocState.setWriteOffset(offset)
                     out.putBoolean("ok", true)
-                    KailLog.d(null, "XPOSED", "PORTAL接收：设置poll偏移 offset=$offset")
+                    KailLog.d(null, "XPOSED", "PORTAL接收：设置write偏移 offset=$offset")
                 } catch (e: Throwable) {
                     out.putBoolean("ok", false)
-                    KailLog.e(null, "XPOSED", "PORTAL接收：设置poll偏移失败 error=${e.message}")
+                    KailLog.e(null, "XPOSED", "PORTAL接收：设置write偏移失败 error=${e.message}")
+                }
+                return true
+            }
+            "set_convert_offset" -> {
+                val offset = out.getString("offset") ?: "0x5B420"
+                try {
+                    FakeLocState.setConvertOffset(offset)
+                    out.putBoolean("ok", true)
+                    KailLog.d(null, "XPOSED", "PORTAL接收：设置convert偏移 offset=$offset")
+                } catch (e: Throwable) {
+                    out.putBoolean("ok", false)
+                    KailLog.e(null, "XPOSED", "PORTAL接收：设置convert偏移失败 error=${e.message}")
                 }
                 return true
             }

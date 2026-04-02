@@ -21,12 +21,16 @@
 #define SENSOR_TYPE_STEP_COUNTER 19
 #define SENSOR_TYPE_STEP_DETECTOR 18
 
-typedef long (*PollFunc)(void*, void*, unsigned long);
+typedef long (*WriteFunc)(void*, void*);
+typedef void (*ConvertFunc)(void*, void*);
 
-static PollFunc original_poll = nullptr;
-static bool hook_installed = false;
+static WriteFunc original_write = nullptr;
+static ConvertFunc original_convert = nullptr;
+static bool write_hook_installed = false;
+static bool convert_hook_installed = false;
 static bool route_simulation_active = false;
-static uint64_t poll_offset = 0;
+static uint64_t write_offset = 0;
+static uint64_t convert_offset = 0;
 
 #define ALOGI_TO_FILE(...) ALOGI(__VA_ARGS__)
 #define ALOGE_TO_FILE(...) ALOGE(__VA_ARGS__)
@@ -39,55 +43,112 @@ void setRouteSimulationActive(bool active) {
     }
 }
 
-static void process_sensor_events(void* buffer, int count) {
-    if (!buffer || count <= 0 || count > 64) return;
+static void process_sensor_event(void* event) {
+    if (!event || !route_simulation_active) return;
 
-    if (!route_simulation_active) return;
+    int type = *(int*)((char*)event + 0x08);
+    uint64_t timestamp = *(uint64_t*)((char*)event + 0x10);
+    float data0 = *(float*)((char*)event + 0x18);
+    float data1 = *(float*)((char*)event + 0x1C);
+    float data2 = *(float*)((char*)event + 0x20);
 
-    sensors_event_t* events = static_cast<sensors_event_t*>(buffer);
+    sensors_event_t se;
+    memset(&se, 0, sizeof(se));
+    se.type = type;
+    se.timestamp = timestamp;
+    se.data[0] = data0;
+    se.data[1] = data1;
+    se.data[2] = data2;
 
-    gait::SensorSimulator::Get().ProcessSensorEvents(events, count);
+    gait::SensorSimulator::Get().ProcessSensorEvents(&se, 1);
 
-    for (int i = 0; i < count; i++) {
-        sensors_event_t& e = events[i];
-
-        if (e.type == SENSOR_TYPE_STEP_COUNTER) {
-            ALOGI("STEP_COUNTER: %.0f", e.data[0]);
-        } else if (e.type == SENSOR_TYPE_STEP_DETECTOR) {
-            ALOGI("STEP_DETECTOR: %.0f", e.data[0]);
-        } else if (e.type == SENSOR_TYPE_ACCELEROMETER) {
-            ALOGI("ACCEL: %.2f %.2f %.2f", e.data[0], e.data[1], e.data[2]);
-        } else if (e.type == SENSOR_TYPE_LINEAR_ACCELERATION) {
-            ALOGI("LINEAR_ACCEL: %.2f %.2f %.2f", e.data[0], e.data[1], e.data[2]);
-        }
+    if (type == SENSOR_TYPE_STEP_COUNTER) {
+        ALOGI("STEP_COUNTER: %.0f", data0);
+    } else if (type == SENSOR_TYPE_STEP_DETECTOR) {
+        ALOGI("STEP_DETECTOR: %.0f", data0);
+    } else if (type == SENSOR_TYPE_ACCELEROMETER) {
+        ALOGI("ACCEL: %.2f %.2f %.2f", data0, data1, data2);
+    } else if (type == SENSOR_TYPE_LINEAR_ACCELERATION) {
+        ALOGI("LINEAR_ACCEL: %.2f %.2f %.2f", data0, data1, data2);
     }
 }
 
-extern "C" long hooked_poll(void* thiz, void* buffer, unsigned long count) {
-    long ret = 0;
-
-    if (original_poll) {
-        ret = original_poll(thiz, buffer, count);
+extern "C" long hooked_write(void* thiz, void* event) {
+    if (event) {
+        process_sensor_event(event);
     }
 
-    if (!buffer || ret <= 0 || ret > 64) return ret;
-
-    process_sensor_events(buffer, (int)ret);
-
-    return ret;
+    if (original_write) {
+        return original_write(thiz, event);
+    }
+    return 0;
 }
 
-static void install_poll_hook() {
-    ALOGI_TO_FILE("Installing poll hook (hardcoded offset)...");
+extern "C" void hooked_convert(void* inEvent, void* outEvent) {
+    process_sensor_event(outEvent);
+
+    if (original_convert) {
+        original_convert(inEvent, outEvent);
+    }
+}
+
+static void install_write_hook() {
+    ALOGI_TO_FILE("Installing SensorEventQueue::write hook...");
     
-    // Use /proc/self/maps to find base address
+    void* base = nullptr;
+    
     FILE* fp = fopen("/proc/self/maps", "r");
     if (!fp) {
         ALOGE_TO_FILE("Failed to open /proc/self/maps");
         return;
     }
     
+    char line[512];
+    while (fgets(line, sizeof(line), fp)) {
+        if (strstr(line, "libsensor.so")) {
+            uint64_t start;
+            sscanf(line, "%lx-", &start);
+            base = (void*)start;
+            ALOGI_TO_FILE("Found libsensor.so at base=%p", base);
+            break;
+        }
+    }
+    fclose(fp);
+    
+    if (!base) {
+        ALOGE_TO_FILE("libsensor.so not found in maps");
+        return;
+    }
+    
+    if (write_offset == 0) {
+        ALOGE_TO_FILE("Write offset not configured!");
+        return;
+    }
+    
+    void* writeAddr = (void*)((char*)base + write_offset);
+    ALOGI_TO_FILE("Using SensorEventQueue::write at %p (offset=0x%lx)", writeAddr, write_offset);
+    
+    int ret = DobbyHook(writeAddr, (void*)hooked_write, (void**)&original_write);
+    
+    if (ret == 0) {
+        ALOGI_TO_FILE("✅ Write Hook SUCCESS!");
+        write_hook_installed = true;
+    } else {
+        ALOGE("❌ Write DobbyHook failed: %d", ret);
+    }
+}
+
+static void install_convert_hook() {
+    ALOGI_TO_FILE("Installing convertToSensorEvent hook...");
+    
     void* base = nullptr;
+    
+    FILE* fp = fopen("/proc/self/maps", "r");
+    if (!fp) {
+        ALOGE_TO_FILE("Failed to open /proc/self/maps");
+        return;
+    }
+    
     char line[512];
     while (fgets(line, sizeof(line), fp)) {
         if (strstr(line, "libsensorservice.so")) {
@@ -105,47 +166,44 @@ static void install_poll_hook() {
         return;
     }
     
-    // Hardcoded offset from dump: poll = 0x394a4
-    // void* pollAddr = (void*)((char*)base + 0x394a4);
-    
-    // ElfImg approach (commented - symbol lookup not working)
-    // ElfImg elf("/system/lib64/libsensorservice.so");
-    // if (!elf.isValid()) { ALOGE("Failed to load ELF"); return; }
-    // void* pollAddr = elf.getSymbolAddressByPrefix("HidlSensorHalWrapper::poll");
-    
-    if (false && false) {
-        // Placeholder to keep code compile
-    }
-    
-    // Use configurable offset (must be set before hook)
-    if (poll_offset == 0) {
-        ALOGE_TO_FILE("Poll offset not configured!");
+    if (convert_offset == 0) {
+        ALOGE_TO_FILE("Convert offset not configured!");
         return;
     }
     
-    void* pollAddr = (void*)((char*)base + poll_offset);
-    ALOGI_TO_FILE("Using poll at %p (offset=0x%lx)", pollAddr, poll_offset);
+    void* convertAddr = (void*)((char*)base + convert_offset);
+    ALOGI_TO_FILE("Using convertToSensorEvent at %p (offset=0x%lx)", convertAddr, convert_offset);
     
-    int ret = DobbyHook(pollAddr, (void*)hooked_poll, (void**)&original_poll);
+    int ret = DobbyHook(convertAddr, (void*)hooked_convert, (void**)&original_convert);
     
     if (ret == 0) {
-        ALOGI_TO_FILE("✅ Hook SUCCESS!");
-        hook_installed = true;
+        ALOGI_TO_FILE("✅ Convert Hook SUCCESS!");
+        convert_hook_installed = true;
     } else {
-        ALOGE("❌ DobbyHook failed: %d", ret);
+        ALOGE("❌ Convert DobbyHook failed: %d", ret);
     }
 }
 
 extern "C" {
 
 JNIEXPORT void JNICALL 
-Java_com_kail_location_xposed_FakeLocState_nativeSetPollOffset(
+Java_com_kail_location_xposed_FakeLocState_nativeSetWriteOffset(
     JNIEnv* env, 
     jclass clazz, 
     jlong offset
 ) {
-    poll_offset = (uint64_t)offset;
-    ALOGI_TO_FILE("JNI: Set poll offset: 0x%lx", poll_offset);
+    write_offset = (uint64_t)offset;
+    ALOGI_TO_FILE("JNI: Set write offset: 0x%lx", write_offset);
+}
+
+JNIEXPORT void JNICALL 
+Java_com_kail_location_xposed_FakeLocState_nativeSetConvertOffset(
+    JNIEnv* env, 
+    jclass clazz, 
+    jlong offset
+) {
+    convert_offset = (uint64_t)offset;
+    ALOGI_TO_FILE("JNI: Set convert offset: 0x%lx", convert_offset);
 }
 
 JNIEXPORT void JNICALL 
@@ -193,10 +251,18 @@ Java_com_kail_location_xposed_FakeLocState_nativeInitHook(
     JNIEnv* env, 
     jclass clazz
 ) {
-    ALOGI_TO_FILE("JNI: init hook (ElfImg)");
+    ALOGI_TO_FILE("JNI: init hook");
 
     gait::SensorSimulator::Get().Init();
-    install_poll_hook();
+    
+    if (write_offset != 0) {
+        install_write_hook();
+    }
+    
+    if (convert_offset != 0) {
+        install_convert_hook();
+    }
+    
     gait::SensorSimulator::Get().ReloadConfig();
 }
 

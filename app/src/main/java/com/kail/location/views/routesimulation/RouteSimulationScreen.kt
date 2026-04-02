@@ -468,8 +468,9 @@ fun SettingsDialog(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { androidx.preference.PreferenceManager.getDefaultSharedPreferences(context) }
-    val pollOffset = remember { prefs.getString("setting_poll_offset", "") ?: "" }
-    val canUseStepFreq = runMode == "root" && pollOffset.isNotEmpty()
+    val writeOffset = remember { prefs.getString("setting_write_offset", "") ?: "" }
+    val convertOffset = remember { prefs.getString("setting_convert_offset", "") ?: "" }
+    val canUseStepFreq = runMode == "root" && (writeOffset.isNotEmpty() || convertOffset.isNotEmpty())
     
     Dialog(onDismissRequest = onDismiss) {
         Card(
