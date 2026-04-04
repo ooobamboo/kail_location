@@ -13,3 +13,24 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# IDE error logs
+.kotlin/
+*.log
+
+# IDE files
+.idea/
+.vs/
+*.iml
+
+# Build outputs
+app/build/
+app/.cxx/
+app/.externalNativeBuild/
+gradle/
+gradlew
+gradlew.bat
+
+# Keystore
+*.jks
+*.keystore
